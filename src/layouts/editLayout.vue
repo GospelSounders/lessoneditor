@@ -287,6 +287,8 @@ const owner = "GospelSounders";
 const pdfFilesRepo = "all-pdf-lessons-in-pdf";
 const sabbathschoolRepo = "sabbathschool";
 const repo = "ch1941.adh";
+const settings = require("../services/values.json");
+const allLessons = require("../services/allLessons.json");
 
 export default {
   name: "MainLayout",
@@ -296,8 +298,14 @@ export default {
   },
   created() {
     // check for credentials
+
     this.checkforCredentials();
+
+    this.getAllLessons();
+    this.getAllExistingLessons();
+
     this.changedLessonType();
+
     // this.$q.loading.show({
     //         message: false
     //           ? "Registering your account..."
@@ -530,6 +538,48 @@ export default {
         this.$refs.pageEditor.srcdoc = tmpSrcDoc;
       }, 1000);
     },
+    async getAllLessons() {
+      // if (!window.localStorage.getItem("allLessons")) {
+      //   let [err, care] = await to(axios.get(
+      //     `https://raw.githubusercontent.com/${owner}/${pdfFilesRepo}/master/allLessons.json`
+      //   ));
+      //   if (err) return false;
+      //   window.localStorage.setItem("allLessons", JSON.stringify(care.data))
+      // }
+      // return JSON.parse(window.localStorage.getItem("allLessons"));
+      return allLessons;
+    },
+    async getAllExistingLessons(read = false) {
+      if (!window.localStorage.getItem("allExistingLessons") || read) {
+        let [err, care] = await to(
+          axios.get(
+            `${settings["CORS_PROXY"]}/https://sabbathschool.gospelsounders.org/sitemap.xml`
+          )
+        );
+        if (err) return false;
+        care = care.data;
+        let locs = care.match(/<loc>[^<]*<\/loc>/g);
+        let quarters = {};
+        locs = locs
+          .filter((item) => item.match(/[0-9]{4}\/quarter[0-9]/))
+          .map((item) => item.match(/[0-9]{4}\/quarter[0-9]/)[0]);
+        // console.log(locs);
+        locs.map((quarter) => {
+          if (quarters[quarter] === undefined) {
+            quarters[quarter] = 1;
+          } else {
+            quarters[quarter] += 1;
+          }
+        });
+        let quartersArr = [];
+        for(let i in quarters)quartersArr.push([i, quarters[i]]);
+        // console.log(quartersArr)
+        let existingQuarters = quartersArr.filter(item=>item[1]>1).map(item=>item[0]);
+        // console.log(existingQuarters)
+        window.localStorage.setItem("allExistingLessons", JSON.stringify(existingQuarters))
+      }
+      return JSON.parse(window.localStorage.getItem("allExistingLessons"));
+    },
     async changedLessonType() {
       this.$q.loading.show({
         message: "Fetching List",
@@ -545,24 +595,67 @@ export default {
 
         // let path = "htmlFiles/SS18880101-01.html";
         let path = "htmlFiles";
-        let [err, care] = await to(
-          octokit.request(
-            `GET /repos/${owner}/${pdfFilesRepo}/contents/${path}`,
-            {
-              owner: owner,
-              repo: pdfFilesRepo,
-              path: path,
-            }
-          )
-        );
-        this.$q.loading.hide();
-        if (err) {
-          return resolve(false);
-        }
-        let allLessons = care.data;
+        // let [err, care] = await to(
+        //   octokit.request(
+        //     `GET /repos/${owner}/${pdfFilesRepo}/contents/${path}`,
+        //     {
+        //       owner: owner,
+        //       repo: pdfFilesRepo,
+        //       path: path,
+        //     }
+        //   )
+        // );
+        // let [err, care] = await to(
+        //   octokit.request(
+        //     `GET /repos/${owner}/${pdfFilesRepo}/contents/${path}`,
+        //     {
+        //       owner: owner,
+        //       repo: pdfFilesRepo,
+        //       path: path,
+        //     }
+        //   )
+        // );
+        // this.$q.loading.hide();
+        // if (err) {
+        //   return resolve(false);
+        // }
+        // let allLessons = care.data;
+        let allLessons = await this.getAllLessons();
+        console.log('-------------')
+        console.log('-------------', allLessons)
         this.allLessons = allLessons.map((item) =>
-          item.name.slice(2).replace(".html", "")
+          item.slice(2).replace(".html", "")
+          // item.name.slice(2).replace(".html", "")
         );
+
+
+        //  let existings_ = this.existings;
+        switch (this.lessonType) {
+          case "all":
+            this.allLessonsToOpen = this.allLessons;
+            break;
+          case "missing":
+            let allExistingLessons = await this.getAllExistingLessons()
+            this.allLessonsToOpen = this.allLessons.filter((item) => {
+              let tmpItem = item;
+              // let thisYear = `${tmpItem.slice(0, 4)}-${item.slice(9, 11)}`;
+              let thisYear = `${tmpItem.slice(0, 4)}`;
+              let thisQuarter = parseInt(`${item.slice(9, 11)}`)
+              // console.log(item, thisYear, thisQuarter);
+              return !allExistingLessons.includes(`${thisYear}/quarter${thisQuarter}`);
+            });
+            break;
+          case "existing":
+            this.openLesson = false;
+            this.$q.notify({
+              type: "negative",
+              message: "Not yet implemented",
+            });
+            break;
+        }
+
+        this.$q.loading.hide();
+        return resolve(true);
 
         let existingHierarchy = [];
         let tenYears = [];
@@ -606,6 +699,7 @@ export default {
           lessonPaths.push(`${yearPaths[i]}/03.quarter3`);
           lessonPaths.push(`${yearPaths[i]}/04.quarter4`);
         }
+
         // console.log(yearPaths);
         if (this.existings.length === 0) {
           this.$q.loading.show({
@@ -644,6 +738,7 @@ export default {
           });
           this.existings = existings;
         }
+
         let existings = this.existings;
         switch (this.lessonType) {
           case "all":
@@ -898,7 +993,7 @@ export default {
         });
         // let owner = "GospelSounders";
         // let repo = "ch1941.adh";
-        let path = `htmlFiles/SS${this.selectedLesson}.html`;
+        let path = `htmlFilesNoImages/SS${this.selectedLesson}.html`;
         let [err, care] = await to(
           axios.get(
             `https://raw.githubusercontent.com/${owner}/${pdfFilesRepo}/master/${path}`
