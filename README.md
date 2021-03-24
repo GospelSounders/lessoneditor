@@ -1,3 +1,3 @@
-# ch1941 Editor (ch1941editor)
+# Sabbath School Lesson Editor
 
 Tools for proofreading scanned and OCRed Sabbath School Lessons
